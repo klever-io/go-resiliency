@@ -20,25 +20,25 @@ const (
 
 // Breaker implements the circuit-breaker resiliency pattern
 type Breaker struct {
-	errorThreshold, successThreshold int
-	timeout                          time.Duration
+	ErrorThreshold, SuccessThreshold int
+	Timeout                          time.Duration
 
-	lock              sync.Mutex
+	Lock              sync.Mutex
 	state             uint32
 	errors, successes int
 	lastError         time.Time
 }
 
 // New constructs a new circuit-breaker that starts closed.
-// From closed, the breaker opens if "errorThreshold" errors are seen
-// without an error-free period of at least "timeout". From open, the
-// breaker half-closes after "timeout". From half-open, the breaker closes
-// after "successThreshold" consecutive successes, or opens on a single error.
-func New(errorThreshold, successThreshold int, timeout time.Duration) *Breaker {
+// From closed, the breaker opens if "ErrorThreshold" errors are seen
+// without an error-free period of at least "Timeout". From open, the
+// breaker half-closes after "Timeout". From half-open, the breaker closes
+// after "SuccessThreshold" consecutive successes, or opens on a single error.
+func New(ErrorThreshold, SuccessThreshold int, Timeout time.Duration) *Breaker {
 	return &Breaker{
-		errorThreshold:   errorThreshold,
-		successThreshold: successThreshold,
-		timeout:          timeout,
+		ErrorThreshold:   ErrorThreshold,
+		SuccessThreshold: SuccessThreshold,
+		Timeout:          Timeout,
 	}
 }
 
@@ -53,6 +53,12 @@ func (b *Breaker) Run(work func() error) error {
 	}
 
 	return b.doWork(state, work)
+}
+
+// GetState will return the current circuit breaker state in order inform how it is
+// based on the initialization of this class
+func (b *Breaker) GetState() *Breaker {
+	return b
 }
 
 // Go will either return ErrBreakerOpen immediately if the circuit-breaker is
@@ -87,11 +93,11 @@ func (b *Breaker) doWork(state uint32, work func() error) error {
 
 	if result == nil && panicValue == nil && state == closed {
 		// short-circuit the normal, success path without contending
-		// on the lock
+		// on the Lock
 		return nil
 	}
 
-	// oh well, I guess we have to contend on the lock
+	// oh well, I guess we have to contend on the Lock
 	b.processResult(result, panicValue)
 
 	if panicValue != nil {
@@ -104,19 +110,19 @@ func (b *Breaker) doWork(state uint32, work func() error) error {
 }
 
 func (b *Breaker) processResult(result error, panicValue interface{}) {
-	b.lock.Lock()
-	defer b.lock.Unlock()
+	b.Lock.Lock()
+	defer b.Lock.Unlock()
 
 	if result == nil && panicValue == nil {
 		if b.state == halfOpen {
 			b.successes++
-			if b.successes == b.successThreshold {
+			if b.successes == b.SuccessThreshold {
 				b.closeBreaker()
 			}
 		}
 	} else {
 		if b.errors > 0 {
-			expiry := b.lastError.Add(b.timeout)
+			expiry := b.lastError.Add(b.Timeout)
 			if time.Now().After(expiry) {
 				b.errors = 0
 			}
@@ -125,7 +131,7 @@ func (b *Breaker) processResult(result error, panicValue interface{}) {
 		switch b.state {
 		case closed:
 			b.errors++
-			if b.errors == b.errorThreshold {
+			if b.errors == b.ErrorThreshold {
 				b.openBreaker()
 			} else {
 				b.lastError = time.Now()
@@ -146,10 +152,10 @@ func (b *Breaker) closeBreaker() {
 }
 
 func (b *Breaker) timer() {
-	time.Sleep(b.timeout)
+	time.Sleep(b.Timeout)
 
-	b.lock.Lock()
-	defer b.lock.Unlock()
+	b.Lock.Lock()
+	defer b.Lock.Unlock()
 
 	b.changeState(halfOpen)
 }
