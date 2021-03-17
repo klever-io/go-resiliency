@@ -12,26 +12,11 @@ import (
 // because the breaker is currently open.
 var ErrBreakerOpen = errors.New("circuit breaker is open")
 
-type State uint32
-
 const (
-	Closed State = iota
+	Closed uint32 = iota
 	Open
 	HalfOpen
 )
-
-func (s State) ToString() string {
-	switch s {
-	case Closed:
-		return "Closed"
-	case Open:
-		return "Open"
-	case HalfOpen:
-		return "HalfOpen"
-	default:
-		return ""
-	}
-}
 
 // Breaker implements the circuit-breaker resiliency pattern
 type Breaker struct {
@@ -61,19 +46,28 @@ func New(ErrorThreshold, SuccessThreshold int, Timeout time.Duration) *Breaker {
 // already open, or it will run the given function and pass along its return
 // value. It is safe to call Run concurrently on the same Breaker.
 func (b *Breaker) Run(work func() error) error {
-	State := atomic.LoadUint32(&b.State)
+	state := atomic.LoadUint32(&b.State)
 
-	if State == Open {
+	if state == Open {
 		return ErrBreakerOpen
 	}
 
-	return b.doWork(State, work)
+	return b.doWork(state, work)
 }
 
 // GetState will return the current circuit breaker State in order inform how it is
 // based on the initialization of this class
-func (b *Breaker) GetState() *Breaker {
-	return b
+func (b *Breaker) GetState() string {
+	switch b.State {
+	case 0:
+		return "Closed"
+	case 1:
+		return "Open"
+	case 2:
+		return "HalfOpen"
+	default:
+		return ""
+	}
 }
 
 // Go will either return ErrBreakerOpen immediately if the circuit-breaker is
