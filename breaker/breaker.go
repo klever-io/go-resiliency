@@ -24,13 +24,13 @@ type Breaker struct {
 	Timeout                          time.Duration
 
 	Lock              sync.Mutex
-	state             uint32
-	errors, successes int
-	lastError         time.Time
+	State             uint32
+	Errors, Successes int
+	LastError         time.Time
 }
 
 // New constructs a new circuit-breaker that starts closed.
-// From closed, the breaker opens if "ErrorThreshold" errors are seen
+// From closed, the breaker opens if "ErrorThreshold" Errors are seen
 // without an error-free period of at least "Timeout". From open, the
 // breaker half-closes after "Timeout". From half-open, the breaker closes
 // after "SuccessThreshold" consecutive successes, or opens on a single error.
@@ -46,16 +46,16 @@ func New(ErrorThreshold, SuccessThreshold int, Timeout time.Duration) *Breaker {
 // already open, or it will run the given function and pass along its return
 // value. It is safe to call Run concurrently on the same Breaker.
 func (b *Breaker) Run(work func() error) error {
-	state := atomic.LoadUint32(&b.state)
+	State := atomic.LoadUint32(&b.State)
 
-	if state == open {
+	if State == open {
 		return ErrBreakerOpen
 	}
 
-	return b.doWork(state, work)
+	return b.doWork(State, work)
 }
 
-// GetState will return the current circuit breaker state in order inform how it is
+// GetState will return the current circuit breaker State in order inform how it is
 // based on the initialization of this class
 func (b *Breaker) GetState() *Breaker {
 	return b
@@ -67,21 +67,21 @@ func (b *Breaker) GetState() *Breaker {
 // the return value of the function. It is safe to call Go concurrently on the
 // same Breaker.
 func (b *Breaker) Go(work func() error) error {
-	state := atomic.LoadUint32(&b.state)
+	State := atomic.LoadUint32(&b.State)
 
-	if state == open {
+	if State == open {
 		return ErrBreakerOpen
 	}
 
 	// errcheck complains about ignoring the error return value, but
 	// that's on purpose; if you want an error from a goroutine you have to
 	// get it over a channel or something
-	go b.doWork(state, work)
+	go b.doWork(State, work)
 
 	return nil
 }
 
-func (b *Breaker) doWork(state uint32, work func() error) error {
+func (b *Breaker) doWork(State uint32, work func() error) error {
 	var panicValue interface{}
 
 	result := func() error {
@@ -91,7 +91,7 @@ func (b *Breaker) doWork(state uint32, work func() error) error {
 		return work()
 	}()
 
-	if result == nil && panicValue == nil && state == closed {
+	if result == nil && panicValue == nil && State == closed {
 		// short-circuit the normal, success path without contending
 		// on the Lock
 		return nil
@@ -114,27 +114,27 @@ func (b *Breaker) processResult(result error, panicValue interface{}) {
 	defer b.Lock.Unlock()
 
 	if result == nil && panicValue == nil {
-		if b.state == halfOpen {
+		if b.State == halfOpen {
 			b.successes++
 			if b.successes == b.SuccessThreshold {
 				b.closeBreaker()
 			}
 		}
 	} else {
-		if b.errors > 0 {
-			expiry := b.lastError.Add(b.Timeout)
+		if b.Errors > 0 {
+			expiry := b.LastError.Add(b.Timeout)
 			if time.Now().After(expiry) {
-				b.errors = 0
+				b.Errors = 0
 			}
 		}
 
-		switch b.state {
+		switch b.State {
 		case closed:
-			b.errors++
-			if b.errors == b.ErrorThreshold {
+			b.Errors++
+			if b.Errors == b.ErrorThreshold {
 				b.openBreaker()
 			} else {
-				b.lastError = time.Now()
+				b.LastError = time.Now()
 			}
 		case halfOpen:
 			b.openBreaker()
@@ -161,7 +161,7 @@ func (b *Breaker) timer() {
 }
 
 func (b *Breaker) changeState(newState uint32) {
-	b.errors = 0
+	b.Errors = 0
 	b.successes = 0
-	atomic.StoreUint32(&b.state, newState)
+	atomic.StoreUint32(&b.State, newState)
 }
