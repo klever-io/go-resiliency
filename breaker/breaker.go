@@ -55,6 +55,12 @@ func (b *Breaker) Run(work func() error) error {
 	return b.doWork(state, work)
 }
 
+// GetState will return the current circuit breaker state in order inform how it is
+// based on the initialization of this class
+func (b *Breaker) GetState() *Breaker {
+	return b
+}
+
 // Go will either return ErrBreakerOpen immediately if the circuit-breaker is
 // already open, or it will run the given function in a separate goroutine.
 // If the function is run, Go will return nil immediately, and will *not* return
